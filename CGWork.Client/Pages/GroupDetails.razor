@@ -1,0 +1,404 @@
+﻿@page "/group/{GroupId:int}"
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<div class="container mt-4">
+
+    @if (isLoading)
+    {
+        <div class="alert alert-info shadow-sm">Зареждане на дневника...</div>
+    }
+    else if (group == null)
+    {
+        <div class="alert alert-danger shadow-sm">Групата не е намерена!</div>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="mb-0">Дневник: <span class="text-primary">@group.Name</span></h2>
+                <div class="text-muted fs-6 mt-1">
+                    <span class="me-3">
+                        <i class="bi bi-person-badge"></i> Титулярен учител:
+                        <strong>@(teachers?.FirstOrDefault(t => t.Id == group.TeacherId)?.FullName ?? "Не е посочен")</strong>
+                    </span>
+                    <span>
+                        <i class="bi bi-calendar-event"></i> Дата на започване:
+                        <strong>@(group.StartDate.HasValue ? group.StartDate.Value.ToString("dd.MM.yyyy") : "Не е въведена")</strong>
+                    </span>
+                </div>
+            </div>
+            <a href="/groups" class="btn btn-outline-secondary">Назад към Групи</a>
+        </div>
+
+        <div class="card shadow border-dark">
+            <div class="card-body overflow-auto p-0">
+                <table class="table table-bordered table-striped table-hover align-middle mb-0 text-center">
+                    <thead class="table-dark">
+                        <!-- 1. ПЪРВИ РЕД: УЧЕНИК, КЛАС, ДАТИ, ТЕМИ И БУТОНИ -->
+                        <tr>
+                            <th class="text-start px-3 align-middle" style="min-width: 200px; position: sticky; left: 0; z-index: 2; background-color: #212529;">Ученик</th>
+                            <th class="align-middle" style="min-width: 90px;">Клас</th>
+
+                            @foreach (var lesson in groupLessons.OrderBy(l => l.Date))
+                            {
+                                bool canEdit = isManager ||
+                                (!string.IsNullOrEmpty(currentUserId) && currentUserId.Equals(lesson.TeacherId, StringComparison.OrdinalIgnoreCase)) ||
+                                (!string.IsNullOrEmpty(currentUserId) && currentUserId.Equals(group.TeacherId, StringComparison.OrdinalIgnoreCase));
+
+                                <th style="min-width: 140px; vertical-align: top;" class="pt-3">
+                                    @lesson.Date.ToString("dd.MM.yyyy")<br />
+
+                                    <span class="fw-bolder text-dark bg-light px-2 py-1 rounded d-inline-block my-1 shadow-sm fs-6">
+                                        @lesson.Topic
+                                    </span><br />
+
+                                    <!-- ВИД НА УРОКА -->
+                                    <div class="my-1">
+                                        @if (lesson.LessonType == "Отучващ")
+                                        {
+                                            <span class="badge bg-warning text-dark">
+                                                <i class="bi bi-arrow-clockwise"></i> Отучващ
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-primary">
+                                                <i class="bi bi-book"></i> Редовен
+                                            </span>
+                                        }
+                                    </div>
+
+                                    <small class="text-light fst-italic">
+                                        <i class="bi bi-person-badge"></i> @(teachers?.FirstOrDefault(t => t.Id == lesson.TeacherId)?.FullName ?? "Неизвестен")
+                                    </small>
+
+                                    @if (canEdit)
+                                    {
+                                        <div class="mt-2">
+                                            <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2 me-1" title="Редактирай тема/дати/присъствия" @onclick="() => OpenEditModal(lesson)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" title="Изтрий" @onclick="() => DeleteLesson(lesson.Id)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                </th>
+                            }
+
+                            <th class="bg-secondary align-middle">Общо</th>
+                        </tr>
+
+                        <!-- 2. ВТОРИ РЕД (ПОД ПЪРВИЯ): ИМЕНА НА МЕСЕЦИТЕ -->
+                        <tr>
+                            <th colspan="2" class="bg-dark border-0"></th>
+
+                            @foreach (var monthGroup in groupLessons.OrderBy(l => l.Date).GroupBy(l => new { l.Date.Year, l.Date.Month }))
+                            {
+                                var firstDate = monthGroup.First().Date;
+                                string monthName = firstDate.ToString("MMMM yyyy", new System.Globalization.CultureInfo("bg-BG"));
+
+                                <th colspan="@monthGroup.Count()" class="text-center fw-bold text-uppercase bg-secondary text-white py-1 border-end border-light">
+                                    <i class="bi bi-calendar3 me-1"></i> @monthName
+                                </th>
+                            }
+
+                            <th class="bg-dark border-0"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var student in groupStudents.OrderBy(s => s.FullName))
+                        {
+                            <tr>
+                                <td class="text-start px-3 fw-bold bg-light" style="position: sticky; left: 0; z-index: 1;">
+                                    <a href="/student/@student.Id" class="text-decoration-none text-primary user-select-none" title="Към профила на @student.FullName">
+                                        <i class="bi bi-person-circle me-1"></i> @student.FullName
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">@student.SchoolClass</span>
+                                </td>
+
+                                @foreach (var lesson in groupLessons.OrderBy(l => l.Date))
+                                {
+                                    bool isPresent = lesson.PresentStudents.Any(ps => ps.Id == student.Id);
+                                    <td>
+                                        @if (isPresent)
+                                        {
+                                            <span class="text-success fw-bold fs-5">✔</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-danger fs-5">✘</span>
+                                        }
+                                    </td>
+                                }
+
+                                <td class="fw-bold bg-light">@student.AttendanceCount</td>
+                            </tr>
+                        }
+
+                        @if (!groupStudents.Any())
+                        {
+                            <tr>
+                                <td colspan="@(groupLessons.Count + 3)" class="text-muted p-4">
+                                    Няма записани ученици в тази група.
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@if (lessonToEdit != null)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.6);" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content shadow-lg">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title text-dark fw-bold"><i class="bi bi-pencil-square"></i> Редактирай урок и присъствия</h5>
+                    <button type="button" class="btn-close" @onclick="CloseEditModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="fw-bold">Дата</label>
+                            <input type="date" class="form-control" @bind="lessonToEdit.Date" />
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label class="fw-bold">Тема на урока</label>
+                            <input type="text" class="form-control" @bind="lessonToEdit.Topic" />
+                        </div>
+
+                        <!-- ИЗБОР НА ВИД УРОК В МОДАЛА -->
+                        <div class="col-md-4 mb-3">
+                            <label class="fw-bold">Вид на урока</label>
+                            <select class="form-select" @bind="lessonToEdit.LessonType">
+                                <option value="Редовен">Редовен урок</option>
+                                <option value="Отучващ">Отучващ урок</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-12 mb-3">
+                            <label class="fw-bold">Водещ учител</label>
+                            <select class="form-select" @bind="lessonToEdit.TeacherId">
+                                <option value="">-- Избери учител --</option>
+                                @if (teachers != null)
+                                {
+                                    @foreach (var t in teachers)
+                                    {
+                                        <option value="@t.Id">@t.FullName</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 p-3 bg-light rounded border">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="fw-bold mb-0">Редактирай присъстващите деца:</h6>
+                            <div>
+                                <button type="button" class="btn btn-sm btn-outline-success py-0 me-1" @onclick="ModalMarkAllPresent">Всички</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary py-0" @onclick="ModalClearAll">Изчисти</button>
+                            </div>
+                        </div>
+                        <div class="row">
+                            @foreach (var student in groupStudents)
+                            {
+                                <div class="col-md-4 mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="modal_student_@student.Id"
+                                               checked="@modalPresentStudentIds.Contains(student.Id)"
+                                               @onchange="@(e => ToggleModalAttendance(student.Id, e.Value))">
+                                        <label class="form-check-label" for="modal_student_@student.Id">
+                                            @student.FullName <small class="text-muted">(@student.SchoolClass)</small>
+                                        </label>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseEditModal">Отказ</button>
+                    <button type="button" class="btn btn-success px-4" @onclick="SaveEditedLesson">Запази промените</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int GroupId { get; set; }
+
+    private bool isLoading = true;
+    private bool isManager = false;
+    private string currentUserId = "";
+
+    private GroupDto? group;
+    private List<StudentDto> groupStudents = new();
+    private List<LessonSessionDto> groupLessons = new();
+    private List<TeacherDto> teachers = new();
+
+    private LessonSessionDto? lessonToEdit = null;
+    private List<int> modalPresentStudentIds = new List<int>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await LocalStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrEmpty(token)) { NavigationManager.NavigateTo("/login"); return; }
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        try
+        {
+            var myProfile = await Http.GetFromJsonAsync<UserProfile>("api/Auth/me");
+            if (myProfile != null)
+            {
+                isManager = (myProfile.Role == "Мениджър");
+                currentUserId = myProfile.Id ?? "";
+            }
+        }
+        catch { }
+
+        var fetchedTeachers = await Http.GetFromJsonAsync<List<TeacherDto>>("api/Auth/teachers");
+        if (fetchedTeachers != null) teachers = fetchedTeachers;
+
+        await LoadDiaryData();
+    }
+
+    private async Task LoadDiaryData()
+    {
+        var allGroups = await Http.GetFromJsonAsync<List<GroupDto>>("api/Groups");
+        group = allGroups?.FirstOrDefault(g => g.Id == GroupId);
+
+        var allStudents = await Http.GetFromJsonAsync<List<StudentDto>>("api/Students");
+        if (allStudents != null)
+        {
+            groupStudents = allStudents.Where(s => s.GroupId == GroupId).ToList();
+        }
+
+        var allLessons = await Http.GetFromJsonAsync<List<LessonSessionDto>>($"api/LessonSessions?guid={Guid.NewGuid()}");
+        if (allLessons != null)
+        {
+            groupLessons = allLessons.Where(l => l.GroupId == GroupId).ToList();
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task DeleteLesson(int lessonId)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "Сигурни ли сте, че искате да изтриете този урок? Това ще изтрие и присъствията за него!");
+        if (!confirmed) return;
+
+        var response = await Http.DeleteAsync($"api/LessonSessions/{lessonId}");
+        if (response.IsSuccessStatusCode)
+        {
+            groupLessons.RemoveAll(l => l.Id == lessonId);
+            StateHasChanged();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Сървърът отказа изтриването. Нямате права!");
+        }
+    }
+
+    private void OpenEditModal(LessonSessionDto lesson)
+    {
+        lessonToEdit = new LessonSessionDto
+            {
+                Id = lesson.Id,
+                Date = lesson.Date,
+                Topic = lesson.Topic,
+                LessonType = string.IsNullOrEmpty(lesson.LessonType) ? "Редовен" : lesson.LessonType,
+                GroupId = lesson.GroupId,
+                TeacherId = lesson.TeacherId
+            };
+
+        modalPresentStudentIds = lesson.PresentStudents.Select(s => s.Id).ToList();
+    }
+
+    private void CloseEditModal()
+    {
+        lessonToEdit = null;
+        modalPresentStudentIds.Clear();
+    }
+
+    private void ToggleModalAttendance(int studentId, object? isChecked)
+    {
+        bool checkStatus = (bool)(isChecked ?? false);
+        if (checkStatus && !modalPresentStudentIds.Contains(studentId))
+        {
+            modalPresentStudentIds.Add(studentId);
+        }
+        else if (!checkStatus && modalPresentStudentIds.Contains(studentId))
+        {
+            modalPresentStudentIds.Remove(studentId);
+        }
+    }
+
+    private void ModalMarkAllPresent()
+    {
+        modalPresentStudentIds = groupStudents.Select(s => s.Id).ToList();
+    }
+
+    private void ModalClearAll()
+    {
+        modalPresentStudentIds.Clear();
+    }
+
+    private async Task SaveEditedLesson()
+    {
+        if (lessonToEdit == null) return;
+
+        var response = await Http.PutAsJsonAsync($"api/LessonSessions/{lessonToEdit.Id}", lessonToEdit);
+
+        if (response.IsSuccessStatusCode)
+        {
+            await Http.PostAsJsonAsync($"api/LessonSessions/{lessonToEdit.Id}/attendance", modalPresentStudentIds);
+
+            isLoading = true;
+            await LoadDiaryData();
+
+            lessonToEdit = null;
+            modalPresentStudentIds.Clear();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Сървърът отказа редакцията. Нямате права или възникна грешка!");
+        }
+    }
+
+    public class UserProfile { public string Id { get; set; } = ""; public string Role { get; set; } = ""; }
+
+    public class GroupDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string TeacherId { get; set; } = "";
+        public DateTime? StartDate { get; set; }
+    }
+
+    public class StudentDto { public int Id { get; set; } public string FullName { get; set; } = ""; public int GroupId { get; set; } public int AttendanceCount { get; set; } public string SchoolClass { get; set; } = ""; }
+    public class TeacherDto { public string Id { get; set; } = ""; public string FullName { get; set; } = ""; }
+
+    public class LessonSessionDto
+    {
+        public int Id { get; set; }
+        public DateTime Date { get; set; }
+        public string Topic { get; set; } = "";
+        public string LessonType { get; set; } = "Редовен";
+        public int GroupId { get; set; }
+        public string TeacherId { get; set; } = "";
+        public List<StudentDto> PresentStudents { get; set; } = new();
+    }
+}

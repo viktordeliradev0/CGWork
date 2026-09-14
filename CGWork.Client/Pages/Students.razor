@@ -1,0 +1,504 @@
+﻿@page "/students"
+@using System.ComponentModel.DataAnnotations
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-people-fill text-orange"></i> Управление на ученици</h2>
+
+        <!-- Бутон за добавяне (видим за Мениджъри и Учители) -->
+        <button class="btn btn-orange shadow-sm fw-bold" @onclick="OpenCreateModal">
+            <i class="bi bi-person-plus-fill me-1"></i> Добави нов ученик
+        </button>
+    </div>
+
+    <!-- БАР С ФИЛТРИ (ГРАД И ГРУПА) -->
+    <div class="card shadow-sm mb-4 border-0 bg-light">
+        <div class="card-body py-3">
+            <div class="row g-3 align-items-center">
+
+                <!-- 1. ФИЛТЪР ПО ГРАД / КЛОН -->
+                <div class="col-md-6 d-flex align-items-center">
+                    <span class="fw-bold text-dark me-2 text-nowrap">
+                        <i class="bi bi-geo-alt-fill me-1 text-danger"></i> Град / Клон:
+                    </span>
+                    <select class="form-select" value="@selectedCityFilter" @onchange="OnCityFilterChanged" disabled="@(!isManager)">
+                        @if (isManager)
+                        {
+                            <option value="Всички">Всички градове</option>
+                            <option value="София">София</option>
+                            <option value="Пловдив">Пловдив</option>
+                            <option value="Варна">Варна</option>
+                            <option value="Бургас">Бургас</option>
+                        }
+                        else
+                        {
+                            <option value="@userCity">@userCity</option>
+                        }
+                    </select>
+                </div>
+
+                <!-- 2. ФИЛТЪР ПО ГРУПА (ФИЛТРИРАН СПРЯМО ГРАДА) -->
+                <div class="col-md-6 d-flex align-items-center">
+                    <span class="fw-bold text-dark me-2 text-nowrap">
+                        <i class="bi bi-collection-fill me-1 text-primary"></i> Група:
+                    </span>
+                    <select class="form-select" value="@selectedGroupFilter" @onchange="OnGroupFilterChanged">
+                        <option value="0">Всички групи от града</option>
+                        @if (cityGroups != null)
+                        {
+                            @foreach (var group in cityGroups)
+                            {
+                                <option value="@group.Id">@group.Name</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="alert alert-info shadow-sm">Зареждане на учениците...</div>
+    }
+    else if (filteredStudents == null || !filteredStudents.Any())
+    {
+        <div class="alert alert-warning shadow-sm">Няма намерени ученици за избрания филтър.</div>
+    }
+    else
+    {
+        <div class="card shadow border-0">
+            <div class="card-body p-0 overflow-auto">
+                <table class="table table-hover align-middle mb-0 text-center">
+                    <thead class="table-orange-header">
+                        <tr>
+                            <th class="text-start px-4">Име на ученик</th>
+                            <th>Клас</th>
+                            <th>Група</th>
+                            <th>Родител</th>
+                            <th>Телефон</th>
+                            <th>Имейл</th>
+                            <th>Присъствия</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var student in filteredStudents.OrderBy(s => s.FullName))
+                        {
+                            var studentGroup = allGroups?.FirstOrDefault(g => g.Id == student.GroupId);
+
+                            <tr>
+                                <td class="text-start px-4 fw-bold">
+                                    <a href="/student/@student.Id" class="text-decoration-none text-dark">
+                                        <i class="bi bi-person-circle text-orange me-1"></i> @student.FullName
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">@student.SchoolClass</span>
+                                </td>
+                                <td>
+                                    @(studentGroup?.Name ?? "Без група")
+                                    @if (studentGroup != null && !string.IsNullOrEmpty(studentGroup.City))
+                                    {
+                                        <small class="text-muted ms-1">(@studentGroup.City)</small>
+                                    }
+                                </td>
+                                <td>@(string.IsNullOrEmpty(student.ParentName) ? "-" : student.ParentName)</td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(student.ParentPhoneNumber))
+                                    {
+                                        <a href="tel:@student.ParentPhoneNumber" class="text-decoration-none text-dark">
+                                            <i class="bi bi-telephone me-1 text-primary"></i>@student.ParentPhoneNumber
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(student.ParentEmail))
+                                    {
+                                        <a href="mailto:@student.ParentEmail" class="text-decoration-none text-dark">
+                                            <i class="bi bi-envelope me-1 text-warning"></i>@student.ParentEmail
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">-</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge bg-success rounded-pill px-3">@student.AttendanceCount</span>
+                                </td>
+                                <td>
+                                    <!-- Мениджър или главният учител на групата може да редактира/изтрива -->
+                                    @if (isManager || (studentGroup != null && studentGroup.TeacherId == currentUserId))
+                                    {
+                                        <button class="btn btn-sm btn-outline-warning me-1" title="Редактирай" @onclick="() => OpenEditModal(student)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" title="Изтрий" @onclick="() => DeleteStudent(student.Id)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">-</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@* МОДАЛЕН ПРОЗОРЕЦ ЗА ДОБАВЯНЕ / РЕДАКЦИЯ *@
+@if (showModal && studentToEdit != null)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.6);" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title fw-bold text-dark">
+                        <i class="bi bi-person-gear me-2"></i>
+                        @(studentToEdit.Id == 0 ? "Добави нов ученик" : "Редактирай ученик")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+
+                <EditForm Model="studentToEdit" OnValidSubmit="SaveStudent">
+                    <DataAnnotationsValidator />
+
+                    <div class="modal-body">
+                        <ValidationSummary class="alert alert-danger p-2 small mb-3" />
+
+                        <!-- ИМЕ НА УЧЕНИК -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Двете имена на ученика *</label>
+                            <InputText class="form-control" @bind-Value="studentToEdit.FullName" placeholder="Иван Иванов" />
+                            <ValidationMessage For="@(() => studentToEdit.FullName)" class="text-danger small mt-1" />
+                        </div>
+
+                        <!-- КЛАС -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Клас</label>
+                            <InputText class="form-control" @bind-Value="studentToEdit.SchoolClass" placeholder="Напр. 4а" />
+                        </div>
+
+                        <!-- ИМЕ НА РОДИТЕЛ -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Име на родител</label>
+                            <InputText class="form-control" @bind-Value="studentToEdit.ParentName" placeholder="Петър Иванов" />
+                        </div>
+
+                        <!-- ТЕЛЕФОН НА РОДИТЕЛ -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Телефон на родител</label>
+                            <InputText class="form-control" @bind-Value="studentToEdit.ParentPhoneNumber" placeholder="0888123456" />
+                            <ValidationMessage For="@(() => studentToEdit.ParentPhoneNumber)" class="text-danger small mt-1" />
+                        </div>
+
+                        <!-- ИМЕЙЛ НА РОДИТЕЛ -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Имейл на родител</label>
+                            <InputText class="form-control" @bind-Value="studentToEdit.ParentEmail" placeholder="parent@example.com" />
+                            <ValidationMessage For="@(() => studentToEdit.ParentEmail)" class="text-danger small mt-1" />
+                        </div>
+
+                        <!-- ГРУПА -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Разпределение в група</label>
+                            <InputSelect class="form-select" @bind-Value="studentToEdit.GroupId">
+                                <option value="0">-- Избери група --</option>
+                                @if (availableGroupsForSelection != null)
+                                {
+                                    @foreach (var group in availableGroupsForSelection)
+                                    {
+                                        <option value="@group.Id">@group.Name (@group.City)</option>
+                                    }
+                                }
+                            </InputSelect>
+                            @if (!isManager)
+                            {
+                                <small class="text-muted d-block mt-1">
+                                    <i class="bi bi-info-circle me-1"></i>Можете да избирате само от групите, на които сте главен учител.
+                                </small>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="modal-footer border-top">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Отказ</button>
+                        <button type="submit" class="btn btn-success px-4 fw-bold">
+                            <i class="bi bi-save me-1"></i> Запази
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isManager = false;
+    private bool showModal = false;
+
+    private string currentUserId = "";
+    private string userCity = "София";
+    private string selectedCityFilter = "Всички";
+    private int selectedGroupFilter = 0; // 0 значи "Всички групи"
+
+    private List<StudentDto>? allStudents;
+    private List<StudentDto>? filteredStudents;
+    private List<GroupDto>? allGroups;
+    private List<GroupDto>? cityGroups; // Групите за избрания град
+    private List<GroupDto>? availableGroupsForSelection;
+    private StudentDto? studentToEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        var token = await LocalStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrEmpty(token))
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        try
+        {
+            var myProfile = await Http.GetFromJsonAsync<UserProfile>("api/Auth/me");
+            if (myProfile != null)
+            {
+                currentUserId = myProfile.Id ?? "";
+                isManager = myProfile.Role.Equals("Мениджър", StringComparison.OrdinalIgnoreCase)
+                         || myProfile.Role.Equals("Manager", StringComparison.OrdinalIgnoreCase);
+                userCity = string.IsNullOrEmpty(myProfile.City) ? "София" : myProfile.City;
+
+                selectedCityFilter = userCity;
+            }
+
+            allStudents = await Http.GetFromJsonAsync<List<StudentDto>>("api/Students");
+            allGroups = await Http.GetFromJsonAsync<List<GroupDto>>("api/Groups");
+
+            UpdateCityGroups();
+            ApplyFilters();
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private void UpdateCityGroups()
+    {
+        if (allGroups == null) return;
+
+        var activeCity = isManager ? selectedCityFilter : userCity;
+
+        if (isManager && activeCity == "Всички")
+        {
+            cityGroups = allGroups;
+        }
+        else
+        {
+            cityGroups = allGroups
+                .Where(g => (string.IsNullOrEmpty(g.City) ? "София" : g.City) == activeCity)
+                .ToList();
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        if (allStudents == null) return;
+
+        var activeCity = isManager ? selectedCityFilter : userCity;
+
+        // 1. Първо филтрираме по град
+        IEnumerable<StudentDto> result = allStudents;
+
+        if (!(isManager && activeCity == "Всички"))
+        {
+            var cityGroupIds = cityGroups?.Select(g => g.Id).ToList() ?? new List<int>();
+            result = result.Where(s => cityGroupIds.Contains(s.GroupId));
+        }
+
+        // 2. Второ филтрираме по избрана конкретна група
+        if (selectedGroupFilter > 0)
+        {
+            result = result.Where(s => s.GroupId == selectedGroupFilter);
+        }
+
+        filteredStudents = result.ToList();
+    }
+
+    private void OnCityFilterChanged(ChangeEventArgs e)
+    {
+        selectedCityFilter = e.Value?.ToString() ?? "Всички";
+        selectedGroupFilter = 0; // Нулираме избора на група при смяна на града
+        UpdateCityGroups();
+        ApplyFilters();
+    }
+
+    private void OnGroupFilterChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int groupId))
+        {
+            selectedGroupFilter = groupId;
+            ApplyFilters();
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        studentToEdit = new StudentDto();
+
+        if (!isManager && allGroups != null)
+        {
+            availableGroupsForSelection = allGroups
+                .Where(g => !string.IsNullOrEmpty(g.TeacherId) && g.TeacherId.Equals(currentUserId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+        else
+        {
+            availableGroupsForSelection = allGroups;
+        }
+
+        showModal = true;
+    }
+
+    private void OpenEditModal(StudentDto student)
+    {
+        studentToEdit = new StudentDto
+        {
+            Id = student.Id,
+            FullName = student.FullName,
+            SchoolClass = student.SchoolClass,
+            ParentName = student.ParentName,
+            ParentPhoneNumber = student.ParentPhoneNumber,
+            ParentEmail = student.ParentEmail,
+            GroupId = student.GroupId,
+            AttendanceCount = student.AttendanceCount
+        };
+
+        if (!isManager && allGroups != null)
+        {
+            availableGroupsForSelection = allGroups
+                .Where(g => !string.IsNullOrEmpty(g.TeacherId) && g.TeacherId.Equals(currentUserId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+        else
+        {
+            availableGroupsForSelection = allGroups;
+        }
+
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        studentToEdit = null;
+    }
+
+    private async Task SaveStudent()
+    {
+        if (studentToEdit == null) return;
+
+        if (studentToEdit.GroupId == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Моля изберете група за ученика!");
+            return;
+        }
+
+        HttpResponseMessage response;
+
+        if (studentToEdit.Id == 0)
+        {
+            response = await Http.PostAsJsonAsync("api/Students", studentToEdit);
+        }
+        else
+        {
+            response = await Http.PutAsJsonAsync($"api/Students/{studentToEdit.Id}", studentToEdit);
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            CloseModal();
+            isLoading = true;
+            await LoadData();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Възникна грешка при запазването на ученика.");
+        }
+    }
+
+    private async Task DeleteStudent(int id)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "Сигурни ли сте, че искате да изтриете този ученик?");
+        if (!confirmed) return;
+
+        var response = await Http.DeleteAsync($"api/Students/{id}");
+        if (response.IsSuccessStatusCode)
+        {
+            isLoading = true;
+            await LoadData();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Сървърът отказа изтриването!");
+        }
+    }
+
+    public class UserProfile { public string Id { get; set; } = ""; public string Role { get; set; } = ""; public string City { get; set; } = "София"; }
+
+    public class GroupDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string TeacherId { get; set; } = "";
+        public string City { get; set; } = "София";
+    }
+
+    public class StudentDto
+    {
+        public int Id { get; set; }
+
+        [Required(ErrorMessage = "Името на ученика е задължително!")]
+        public string FullName { get; set; } = "";
+
+        public string SchoolClass { get; set; } = "";
+
+        public string? ParentName { get; set; }
+
+        [RegularExpression(@"^[0-9+\s-]{9,}$", ErrorMessage = "Невалиден телефонен номер! Позволени са само цифри.")]
+        public string ParentPhoneNumber { get; set; } = "";
+
+        [EmailAddress(ErrorMessage = "Моля, въведете валиден имейл адрес съдържащ символа '@' (напр. parent@gmail.com)!")]
+        public string? ParentEmail { get; set; }
+
+        public int GroupId { get; set; }
+        public int AttendanceCount { get; set; }
+    }
+}

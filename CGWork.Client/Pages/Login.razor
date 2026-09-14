@@ -1,0 +1,102 @@
+﻿@page "/login"
+@using System.Net.Http.Headers
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<div class="container mt-5" style="max-width: 450px;">
+    <div class="card shadow-lg border-0 card-orange-top">
+        <div class="card-body p-4">
+            <div class="text-center mb-4">
+                <h3 class="fw-bold text-orange"><i class="bi bi-code-slash me-2"></i>CGWork</h3>
+                <p class="text-muted">Влезте в своя профил</p>
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger py-2 small">@errorMessage</div>
+            }
+
+            <EditForm Model="loginModel" OnValidSubmit="HandleLogin">
+                <DataAnnotationsValidator />
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Имейл адрес</label>
+                    <InputText class="form-control" @bind-Value="loginModel.Email" placeholder="admin@example.com" />
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Парола</label>
+                    <InputText type="password" class="form-control" @bind-Value="loginModel.Password" placeholder="******" />
+                </div>
+
+                <button type="submit" class="btn btn-orange w-100 py-2 fw-bold" disabled="@isSubmitting">
+                    @if (isSubmitting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        <span>Влизане...</span>
+                    }
+                    else
+                    {
+                        <span>Вход</span>
+                    }
+                </button>
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginDto loginModel = new();
+    private string errorMessage = "";
+    private bool isSubmitting = false;
+
+    private async Task HandleLogin()
+    {
+        isSubmitting = true;
+        errorMessage = "";
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/Auth/login", loginModel);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<LoginResultDto>();
+                if (result != null && !string.IsNullOrEmpty(result.Token))
+                {
+                    // 1. Запазваме токена в LocalStorage
+                    await LocalStorage.SetItemAsync("authToken", result.Token);
+
+                    // 2. Слагаме токена директно в текущата инстанция на HttpClient
+                    Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", result.Token);
+
+                    // 3. Пренасочваме с forceLoad: true за пълно опресняване на приложението
+                    NavigationManager.NavigateTo("/", forceLoad: true);
+                    return;
+                }
+            }
+
+            errorMessage = "Грешен имейл или парола!";
+        }
+        catch
+        {
+            errorMessage = "Възникна грешка при връзката със сървъра.";
+        }
+
+        isSubmitting = false;
+    }
+
+    public class LoginDto
+    {
+        public string Email { get; set; } = "";
+        public string Password { get; set; } = "";
+    }
+
+    public class LoginResultDto
+    {
+        public string Token { get; set; } = "";
+    }
+}

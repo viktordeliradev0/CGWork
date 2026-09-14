@@ -1,0 +1,110 @@
+﻿@page "/semesters"
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+
+<div class="container mt-4">
+    <h2 class="mb-4">Управление на Семестри</h2>
+
+    @if (semesters == null)
+    {
+        <div class="alert alert-info">Зареждане на данните...</div>
+    }
+    else
+    {
+        <!-- Таблица със семестри -->
+        <div class="card shadow mb-4">
+            <div class="card-body">
+                <table class="table table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Име на семестър</th>
+                            <th>Начална дата</th>
+                            <th>Крайна дата</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var sem in semesters)
+                        {
+                            <tr>
+                                <td><strong>@sem.Name</strong></td>
+                                <td>@sem.StartDate.ToShortDateString()</td>
+                                <td>@sem.EndDate.ToShortDateString()</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Форма за нов семестър -->
+        <div class="card shadow">
+            <div class="card-header bg-warning text-dark fw-bold">
+                <h5 class="mb-0">Създай нов семестър</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label>Име (напр. Есен 2026)</label>
+                        <input @bind="newSemester.Name" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label>Начало</label>
+                        <input type="date" @bind="newSemester.StartDate" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label>Край</label>
+                        <input type="date" @bind="newSemester.EndDate" class="form-control" />
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button @onclick="CreateSemester" class="btn btn-warning w-100 fw-bold">Добави</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<SemesterDto>? semesters;
+    private SemesterDto newSemester = new SemesterDto { StartDate = DateTime.Today, EndDate = DateTime.Today.AddMonths(4) };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSemesters();
+    }
+
+    private async Task LoadSemesters()
+    {
+        var token = await LocalStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrEmpty(token))
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        semesters = await Http.GetFromJsonAsync<List<SemesterDto>>("api/Semesters");
+    }
+
+    private async Task CreateSemester()
+    {
+        if (string.IsNullOrWhiteSpace(newSemester.Name)) return;
+
+        var response = await Http.PostAsJsonAsync("api/Semesters", newSemester);
+        if (response.IsSuccessStatusCode)
+        {
+            newSemester = new SemesterDto { StartDate = DateTime.Today, EndDate = DateTime.Today.AddMonths(4) };
+            await LoadSemesters();
+        }
+    }
+
+    public class SemesterDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public DateTime StartDate { get; set; }
+        public DateTime EndDate { get; set; }
+    }
+}

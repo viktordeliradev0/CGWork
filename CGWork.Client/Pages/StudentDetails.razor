@@ -1,0 +1,319 @@
+﻿@page "/student/{Id:int}"
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<div class="container mt-4">
+    <div class="mb-3">
+        <a href="/students" class="btn btn-outline-secondary btn-sm shadow-sm">
+            <i class="bi bi-arrow-left"></i> Назад към учениците
+        </a>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="alert alert-info shadow-sm">Зареждане на данните за ученика...</div>
+    }
+    else if (student == null)
+    {
+        <div class="alert alert-danger shadow-sm">Ученикът не е намерен!</div>
+    }
+    else
+    {
+        <div class="row">
+            <!-- Профил на ученика -->
+            <div class="col-md-5 mb-4">
+                <div class="card shadow border-0 h-100">
+                    <div class="card-header bg-orange text-white fw-bold py-3">
+                        <i class="bi bi-person-badge-fill me-2"></i> Профил на ученика
+                    </div>
+                    <div class="card-body p-4">
+                        <h3 class="text-orange fw-bold mb-3">@student.FullName</h3>
+
+                        <div class="mb-3">
+                            <span class="text-muted d-block small">Клас:</span>
+                            <span class="badge bg-light text-dark border px-3 py-2 fs-6">
+                                @(string.IsNullOrEmpty(student.SchoolClass) ? "Не е посочен" : student.SchoolClass)
+                            </span>
+                        </div>
+
+                        <div class="mb-3">
+                            <span class="text-muted d-block small">Група:</span>
+                            <span class="fw-bold text-primary fs-6">
+                                <i class="bi bi-collection-fill me-1"></i>@(groupName ?? "Без група")
+                            </span>
+                        </div>
+
+                        <hr class="my-4" />
+
+                        <h5 class="fw-bold mb-3 text-secondary"><i class="bi bi-person-lines-fill me-2"></i>Контакт с родител</h5>
+
+                        <p class="mb-2">
+                            <strong>Име:</strong> @(string.IsNullOrEmpty(student.ParentName) ? "-" : student.ParentName)
+                        </p>
+                        <p class="mb-2">
+                            <strong>Телефон:</strong>
+                            @if (!string.IsNullOrEmpty(student.ParentPhoneNumber))
+                            {
+                                <a href="tel:@student.ParentPhoneNumber" class="text-decoration-none fw-bold text-dark">
+                                    <i class="bi bi-telephone text-primary me-1"></i>@student.ParentPhoneNumber
+                                </a>
+                            }
+                            else
+                            {
+                                <span>-</span>
+                            }
+                        </p>
+                        <p class="mb-0">
+                            <strong>Имейл:</strong>
+                            @if (!string.IsNullOrEmpty(student.ParentEmail))
+                            {
+                                <a href="mailto:@student.ParentEmail" class="text-decoration-none fw-bold text-dark">
+                                    <i class="bi bi-envelope text-warning me-1"></i>@student.ParentEmail
+                                </a>
+                            }
+                            else
+                            {
+                                <span>-</span>
+                            }
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Управление на 4-те месечни такси -->
+            <div class="col-md-7 mb-4">
+                <div class="card shadow border-0">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-3">
+                        <h5 class="mb-0"><i class="bi bi-cash-stack me-2 text-warning"></i> Месечни такси за семестъра</h5>
+
+                        @if (isManager)
+                        {
+                            <button class="btn btn-success btn-sm fw-bold px-3 shadow-sm" @onclick="SaveFees" disabled="@isSaving">
+                                @if (isSaving)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-save me-1"></i>
+                                }
+                                Запази промените
+                            </button>
+                        }
+                    </div>
+                    <div class="card-body p-4">
+                        @if (!isManager)
+                        {
+                            <div class="alert alert-warning py-2 mb-3 small border-0 shadow-sm">
+                                <i class="bi bi-lock-fill me-1"></i> Тъй като сте с роля <strong>Учител</strong>, можете само да преглеждате статуса на плащанията.
+                            </div>
+                        }
+
+                        <div class="row g-3">
+
+                            <!-- МЕСЕЦ 1 -->
+                            <div class="col-md-6">
+                                <div class="card p-3 h-100 transition-all @(student.PaidMonth1 ? "border-success bg-success-subtle" : "border-secondary-subtle bg-light")">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="month1"
+                                               checked="@student.PaidMonth1"
+                                               disabled="@(!isManager)"
+                                               @onchange="(e) => ToggleMonth(1, e)" />
+                                        <label class="form-check-label fw-bold text-dark" for="month1">Такса Месец 1</label>
+                                    </div>
+                                    @if (student.PaidMonth1)
+                                    {
+                                        <div class="mt-2">
+                                            <label class="form-label small text-muted mb-1 fw-bold">Дата на плащане:</label>
+                                            <input type="date" class="form-control form-control-sm" @bind="student.PaidMonth1Date" disabled="@(!isManager)" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <!-- МЕСЕЦ 2 -->
+                            <div class="col-md-6">
+                                <div class="card p-3 h-100 transition-all @(student.PaidMonth2 ? "border-success bg-success-subtle" : "border-secondary-subtle bg-light")">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="month2"
+                                               checked="@student.PaidMonth2"
+                                               disabled="@(!isManager)"
+                                               @onchange="(e) => ToggleMonth(2, e)" />
+                                        <label class="form-check-label fw-bold text-dark" for="month2">Такса Месец 2</label>
+                                    </div>
+                                    @if (student.PaidMonth2)
+                                    {
+                                        <div class="mt-2">
+                                            <label class="form-label small text-muted mb-1 fw-bold">Дата на плащане:</label>
+                                            <input type="date" class="form-control form-control-sm" @bind="student.PaidMonth2Date" disabled="@(!isManager)" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <!-- МЕСЕЦ 3 -->
+                            <div class="col-md-6">
+                                <div class="card p-3 h-100 transition-all @(student.PaidMonth3 ? "border-success bg-success-subtle" : "border-secondary-subtle bg-light")">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="month3"
+                                               checked="@student.PaidMonth3"
+                                               disabled="@(!isManager)"
+                                               @onchange="(e) => ToggleMonth(3, e)" />
+                                        <label class="form-check-label fw-bold text-dark" for="month3">Такса Месец 3</label>
+                                    </div>
+                                    @if (student.PaidMonth3)
+                                    {
+                                        <div class="mt-2">
+                                            <label class="form-label small text-muted mb-1 fw-bold">Дата на плащане:</label>
+                                            <input type="date" class="form-control form-control-sm" @bind="student.PaidMonth3Date" disabled="@(!isManager)" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <!-- МЕСЕЦ 4 -->
+                            <div class="col-md-6">
+                                <div class="card p-3 h-100 transition-all @(student.PaidMonth4 ? "border-success bg-success-subtle" : "border-secondary-subtle bg-light")">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" id="month4"
+                                               checked="@student.PaidMonth4"
+                                               disabled="@(!isManager)"
+                                               @onchange="(e) => ToggleMonth(4, e)" />
+                                        <label class="form-check-label fw-bold text-dark" for="month4">Такса Месец 4</label>
+                                    </div>
+                                    @if (student.PaidMonth4)
+                                    {
+                                        <div class="mt-2">
+                                            <label class="form-label small text-muted mb-1 fw-bold">Дата на плащане:</label>
+                                            <input type="date" class="form-control form-control-sm" @bind="student.PaidMonth4Date" disabled="@(!isManager)" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private bool isManager = false;
+
+    private StudentDto? student;
+    private string? groupName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await LocalStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrEmpty(token))
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        try
+        {
+            var myProfile = await Http.GetFromJsonAsync<UserProfile>("api/Auth/me");
+            if (myProfile != null)
+            {
+                isManager = myProfile.Role.Equals("Мениджър", StringComparison.OrdinalIgnoreCase)
+                         || myProfile.Role.Equals("Manager", StringComparison.OrdinalIgnoreCase);
+            }
+
+            student = await Http.GetFromJsonAsync<StudentDto>($"api/Students/{Id}");
+            if (student != null && student.GroupId > 0)
+            {
+                var groups = await Http.GetFromJsonAsync<List<GroupDto>>("api/Groups");
+                groupName = groups?.FirstOrDefault(g => g.Id == student.GroupId)?.Name;
+            }
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/students");
+        }
+
+        isLoading = false;
+    }
+
+    private void ToggleMonth(int monthIndex, ChangeEventArgs e)
+    {
+        if (student == null || !isManager) return;
+        bool isChecked = (bool)(e.Value ?? false);
+
+        switch (monthIndex)
+        {
+            case 1:
+                student.PaidMonth1 = isChecked;
+                student.PaidMonth1Date = isChecked ? DateTime.Today : null;
+                break;
+            case 2:
+                student.PaidMonth2 = isChecked;
+                student.PaidMonth2Date = isChecked ? DateTime.Today : null;
+                break;
+            case 3:
+                student.PaidMonth3 = isChecked;
+                student.PaidMonth3Date = isChecked ? DateTime.Today : null;
+                break;
+            case 4:
+                student.PaidMonth4 = isChecked;
+                student.PaidMonth4Date = isChecked ? DateTime.Today : null;
+                break;
+        }
+    }
+
+    private async Task SaveFees()
+    {
+        if (student == null || !isManager) return;
+        isSaving = true;
+
+        var response = await Http.PutAsJsonAsync($"api/Students/{student.Id}", student);
+        if (response.IsSuccessStatusCode)
+        {
+            await JS.InvokeVoidAsync("alert", "Статусът на месечните такси е обновен успешно!");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Грешка при запазването на таксите.");
+        }
+
+        isSaving = false;
+    }
+
+    public class UserProfile { public string Id { get; set; } = ""; public string Role { get; set; } = ""; }
+    public class GroupDto { public int Id { get; set; } public string Name { get; set; } = ""; }
+
+    public class StudentDto
+    {
+        public int Id { get; set; }
+        public string FullName { get; set; } = "";
+        public string? SchoolClass { get; set; }
+        public string? ParentName { get; set; }
+        public string? ParentPhoneNumber { get; set; }
+        public string? ParentEmail { get; set; }
+        public int GroupId { get; set; }
+
+        public bool PaidMonth1 { get; set; }
+        public DateTime? PaidMonth1Date { get; set; }
+
+        public bool PaidMonth2 { get; set; }
+        public DateTime? PaidMonth2Date { get; set; }
+
+        public bool PaidMonth3 { get; set; }
+        public DateTime? PaidMonth3Date { get; set; }
+
+        public bool PaidMonth4 { get; set; }
+        public DateTime? PaidMonth4Date { get; set; }
+    }
+}

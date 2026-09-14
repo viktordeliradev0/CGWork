@@ -1,0 +1,282 @@
+﻿@page "/teachers"
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-people-fill text-orange"></i> Преподаватели и Мениджъри</h2>
+    </div>
+
+    <!-- ФИЛТЪР ПО ГРАД -->
+    <div class="card shadow-sm mb-4 border-0 bg-light">
+        <div class="card-body py-2 d-flex align-items-center justify-content-between">
+            <span class="fw-bold text-dark">
+                <i class="bi bi-funnel-fill me-1 text-orange"></i> Филтрирай по град / клон:
+            </span>
+            <select class="form-select w-auto" value="@selectedCityFilter" @onchange="OnCityFilterChanged">
+                <option value="Всички">Всички градове</option>
+                <option value="София">София</option>
+                <option value="Пловдив">Пловдив</option>
+                <option value="Варна">Варна</option>
+                <option value="Бургас">Бургас</option>
+                <option value="Русе">Русе</option>
+                <option value="Стара Загора">Стара Загора</option>
+            </select>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="alert alert-info shadow-sm">Зареждане на учителите...</div>
+    }
+    else if (filteredTeachers == null || !filteredTeachers.Any())
+    {
+        <div class="alert alert-warning shadow-sm">Няма намерени учители за избрания град.</div>
+    }
+    else
+    {
+        <div class="card shadow border-0">
+            <div class="card-body p-0 overflow-auto">
+                <table class="table table-hover align-middle mb-0 text-center">
+                    <thead class="table-orange-header">
+                        <tr>
+                            <th class="text-start px-4">Име и Фамилия</th>
+                            <th>Имейл</th>
+                            <th>Телефон</th>
+                            <th>Град / Клон</th>
+                            @if (isManager)
+                            {
+                                <th>Действия</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var teacher in filteredTeachers)
+                        {
+                            <tr>
+                                <td class="text-start px-4 fw-bold">
+                                    <i class="bi bi-person-badge text-orange me-2"></i>@teacher.FullName
+                                </td>
+                                <td>@teacher.Email</td>
+                                <td>@(string.IsNullOrEmpty(teacher.PhoneNumber) ? "-" : teacher.PhoneNumber)</td>
+                                <td>
+                                    <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-3 py-1 rounded-pill">
+                                        <i class="bi bi-geo-alt-fill me-1 text-danger"></i>@(string.IsNullOrEmpty(teacher.City) ? "София" : teacher.City)
+                                    </span>
+                                </td>
+                                @if (isManager)
+                                {
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-warning me-1" title="Редактирай" @onclick="() => OpenEditModal(teacher)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" title="Изтрий" @onclick="() => DeleteTeacher(teacher.Id)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- МОДАЛЕН ПРОЗОРЕЦ ЗА РЕДАКЦИЯ НА УЧИТЕЛ -->
+@if (showModal && teacherToEdit != null)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.6);" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-pencil-square me-2"></i> Редактирай учител
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Име и Фамилия</label>
+                        <input type="text" class="form-control" @bind="teacherToEdit.FullName" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Имейл адрес (Не може да се променя)</label>
+                        <input type="text" class="form-control" value="@teacherToEdit.Email" disabled />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Телефонен номер</label>
+                        <input type="text" class="form-control" @bind="teacherToEdit.PhoneNumber" placeholder="0888123456" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Град / Клон на академията</label>
+                        <select class="form-select" @bind="teacherToEdit.City">
+                            <option value="София">София</option>
+                            <option value="Пловдив">Пловдив</option>
+                            <option value="Варна">Варна</option>
+                            <option value="Бургас">Бургас</option>
+                            <option value="Русе">Русе</option>
+                            <option value="Стара Загора">Стара Загора</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Отказ</button>
+                    <button type="button" class="btn btn-primary fw-bold px-4" @onclick="SaveTeacher">
+                        <i class="bi bi-save me-1"></i> Запази
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isManager = false;
+    private bool showModal = false;
+
+    private string userCity = "София";
+    private string selectedCityFilter = "Всички";
+
+    private List<TeacherDto>? allTeachers;
+    private List<TeacherDto>? filteredTeachers;
+    private TeacherDto? teacherToEdit;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        var token = await LocalStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrEmpty(token))
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        try
+        {
+            var myProfile = await Http.GetFromJsonAsync<UserProfile>("api/Auth/me");
+            if (myProfile != null)
+            {
+                isManager = myProfile.Role.Equals("Мениджър", StringComparison.OrdinalIgnoreCase)
+                         || myProfile.Role.Equals("Manager", StringComparison.OrdinalIgnoreCase);
+                userCity = string.IsNullOrEmpty(myProfile.City) ? "София" : myProfile.City;
+
+                // По подразбиране задаваме филтъра спрямо града от профила
+                selectedCityFilter = userCity;
+            }
+
+            allTeachers = await Http.GetFromJsonAsync<List<TeacherDto>>("api/Auth/teachers");
+            ApplyCityFilter();
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+
+        isLoading = false;
+    }
+
+    private void ApplyCityFilter()
+    {
+        if (allTeachers == null) return;
+
+        if (selectedCityFilter == "Всички")
+        {
+            filteredTeachers = allTeachers;
+        }
+        else
+        {
+            filteredTeachers = allTeachers
+                .Where(t => (string.IsNullOrEmpty(t.City) ? "София" : t.City) == selectedCityFilter)
+                .ToList();
+        }
+    }
+
+    private void OnCityFilterChanged(ChangeEventArgs e)
+    {
+        selectedCityFilter = e.Value?.ToString() ?? "Всички";
+        ApplyCityFilter();
+    }
+
+    private void OpenEditModal(TeacherDto teacher)
+    {
+        teacherToEdit = new TeacherDto
+        {
+            Id = teacher.Id,
+            FullName = teacher.FullName,
+            Email = teacher.Email,
+            PhoneNumber = teacher.PhoneNumber,
+            City = string.IsNullOrEmpty(teacher.City) ? "София" : teacher.City
+        };
+        showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        showModal = false;
+        teacherToEdit = null;
+    }
+
+    private async Task SaveTeacher()
+    {
+        if (teacherToEdit == null) return;
+
+        var response = await Http.PutAsJsonAsync($"api/Auth/teachers/{teacherToEdit.Id}", teacherToEdit);
+        if (response.IsSuccessStatusCode)
+        {
+            CloseModal();
+            isLoading = true;
+            await LoadData();
+            StateHasChanged();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Грешка при запазването на учителския профил!");
+        }
+    }
+
+    private async Task DeleteTeacher(string id)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "Сигурни ли сте, че искате да изтриете този учителски профил?");
+        if (!confirmed) return;
+
+        var response = await Http.DeleteAsync($"api/Auth/teachers/{id}");
+        if (response.IsSuccessStatusCode)
+        {
+            isLoading = true;
+            await LoadData();
+            StateHasChanged();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Грешка при изтриване! Не можете да изтриете собствения си профил.");
+        }
+    }
+
+    public class UserProfile { public string Id { get; set; } = ""; public string Role { get; set; } = ""; public string City { get; set; } = "София"; }
+
+    public class TeacherDto
+    {
+        public string Id { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string PhoneNumber { get; set; } = "";
+        public string City { get; set; } = "София";
+    }
+}

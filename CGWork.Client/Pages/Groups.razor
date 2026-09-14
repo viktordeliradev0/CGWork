@@ -1,0 +1,293 @@
+﻿@page "/groups"
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0"><i class="bi bi-collection"></i> Всички групи</h2>
+
+        <!-- Само мениджър може да създава НОВИ групи -->
+        @if (isManager)
+        {
+            <button class="btn btn-success fw-bold shadow-sm" @onclick="OpenCreateModal">
+                <i class="bi bi-plus-circle"></i> Създай нова група
+            </button>
+        }
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="alert alert-info shadow-sm">Зареждане на групите...</div>
+    }
+    else if (!groups.Any())
+    {
+        <div class="alert alert-warning shadow-sm">Няма намерени групи в системата.</div>
+    }
+    else
+    {
+        <div class="row">
+            @foreach (var group in groups)
+            {
+                <div class="col-md-4 mb-4">
+                    <div class="card shadow-sm h-100 border-top-0 border-end-0 border-bottom-0 border-primary border-4">
+                        <div class="card-body">
+                            <h4 class="card-title text-primary fw-bold mb-3">@group.Name</h4>
+
+                            <p class="card-text mb-1">
+                                <i class="bi bi-person-badge text-muted"></i>
+                                <strong>Учител:</strong> @(teachers.FirstOrDefault(t => t.Id == group.TeacherId)?.FullName ?? "Не е назначен")
+                            </p>
+                            <p class="card-text mb-2">
+                                <i class="bi bi-calendar-event text-muted"></i>
+                                <strong>Старт:</strong> @(group.StartDate.HasValue? group.StartDate.Value.ToString("dd.MM.yyyy") : "Няма дата")
+                            </p>
+                            <div>
+                                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle px-3 py-1 rounded-pill">
+                                    <i class="bi bi-geo-alt-fill me-1 text-danger"></i>@(string.IsNullOrEmpty(group.City) ? "Не е посочен" : group.City)
+                                </span>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white border-0 p-3 d-flex justify-content-between align-items-center">
+
+                            <!-- Дневник бутон -->
+                            <a href="/group/@group.Id" class="btn btn-primary btn-sm fw-bold px-3">
+                                <i class="bi bi-journal-text"></i> Дневник
+                            </a>
+
+                            <div>
+                                <!-- Показваме Редакция/Изтриване САМО ако е мениджър ИЛИ е негова група -->
+                                @if (isManager || (!string.IsNullOrEmpty(currentUserId) && currentUserId.Equals(group.TeacherId, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    <button class="btn btn-outline-warning btn-sm me-1" title="Редактирай" @onclick="() => OpenEditModal(group)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" title="Изтрий" @onclick="() => DeleteGroup(group.Id)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                }
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<!-- МОДАЛЕН ПРОЗОРЕЦ ЗА СЪЗДАВАНЕ / РЕДАКТИРАНЕ НА ГРУПА -->
+@if (groupToEdit != null)
+{
+    <div class="modal fade show d-block" style="background-color: rgba(0,0,0,0.6);" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg">
+                <div class="modal-header @(groupToEdit.Id == 0 ? "bg-success text-white" : "bg-warning text-dark")">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi @(groupToEdit.Id == 0 ? "bi-plus-circle" : "bi-pencil-square")"></i>
+                        @(groupToEdit.Id == 0 ? "Създай нова група" : "Редактирай група")
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Име на групата -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Име на групата</label>
+                        <input type="text" class="form-control" @bind="groupToEdit.Name" placeholder="напр. C# Advanced - Събота 10:00" />
+                    </div>
+
+                    <!-- Дата на започване -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Дата на започване</label>
+                        <input type="date" class="form-control" @bind="groupToEdit.StartDate" />
+                    </div>
+
+                    <!-- Водещ учител -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Водещ учител</label>
+                        <select class="form-select" @bind="groupToEdit.TeacherId">
+                            <option value="">-- Избери учител --</option>
+                            @foreach (var teacher in teachers)
+                            {
+                                <option value="@teacher.Id">@teacher.FullName</option>
+                            }
+                        </select>
+                    </div>
+
+                    <!-- Град -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Град</label>
+                        <select class="form-select" @bind="groupToEdit.City">
+                            <option value="София">София</option>
+                            <option value="Пловдив">Пловдив</option>
+                            <option value="Варна">Варна</option>
+                            <option value="Бургас">Бургас</option>
+                            <option value="Русе">Русе</option>
+                            <option value="Стара Загора">Стара Загора</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseModal">Отказ</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveGroup">Запази</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isManager = false;
+    private string currentUserId = "";
+    private string userCity = "Пловдив";
+
+    private List<GroupDto> groups = new();
+    private List<TeacherDto> teachers = new();
+
+    private GroupDto? groupToEdit = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await LocalStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrEmpty(token)) { NavigationManager.NavigateTo("/login"); return; }
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        try
+        {
+            var myProfile = await Http.GetFromJsonAsync<UserProfile>("api/Auth/me");
+            isManager = (myProfile?.Role == "Мениджър");
+            currentUserId = myProfile?.Id ?? "";
+            userCity = string.IsNullOrEmpty(myProfile?.City) ? "Пловдив" : myProfile!.City;
+
+            var fetchedTeachers = await Http.GetFromJsonAsync<List<TeacherDto>>("api/Auth/teachers");
+            if (fetchedTeachers != null) teachers = fetchedTeachers;
+
+            await LoadGroups();
+        }
+        catch { NavigationManager.NavigateTo("/login"); }
+
+        isLoading = false;
+    }
+
+    private async Task LoadGroups()
+    {
+        var myProfile = await Http.GetFromJsonAsync<UserProfile>("api/Auth/me");
+        userCity = string.IsNullOrEmpty(myProfile?.City) ? "Пловдив" : myProfile!.City;
+
+        var allGroups = await Http.GetFromJsonAsync<List<GroupDto>>("api/Groups");
+
+        if (allGroups != null)
+        {
+            // Ако в профила е избрано "Всички", вижда абсолютно всички групи
+            if (userCity == "Всички")
+            {
+                groups = allGroups;
+            }
+            else
+            {
+                groups = allGroups.Where(g => g.City == userCity).ToList();
+            }
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        groupToEdit = new GroupDto
+        {
+            StartDate = DateTime.Today,
+            City = (userCity == "Всички") ? "Пловдив" : userCity // Предаваме града на логнатия потребител
+        };
+    }
+
+    private void OpenEditModal(GroupDto group)
+    {
+        groupToEdit = new GroupDto
+        {
+            Id = group.Id,
+            Name = group.Name,
+            TeacherId = group.TeacherId,
+            City = string.IsNullOrEmpty(group.City) ? "Пловдив" : group.City, // Копираме града!
+            StartDate = group.StartDate ?? DateTime.Today
+        };
+    }
+
+    private void CloseModal()
+    {
+        groupToEdit = null;
+    }
+
+    private async Task SaveGroup()
+    {
+        if (groupToEdit == null || string.IsNullOrWhiteSpace(groupToEdit.Name))
+        {
+            await JS.InvokeVoidAsync("alert", "Моля въведете име на групата!");
+            return;
+        }
+
+        HttpResponseMessage response;
+        if (groupToEdit.Id == 0)
+        {
+            response = await Http.PostAsJsonAsync("api/Groups", groupToEdit);
+        }
+        else
+        {
+            response = await Http.PutAsJsonAsync($"api/Groups/{groupToEdit.Id}", groupToEdit);
+        }
+
+        if (response.IsSuccessStatusCode)
+        {
+            groupToEdit = null;
+            await LoadGroups();
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Грешка при запис на групата!");
+        }
+    }
+
+    private async Task DeleteGroup(int groupId)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm", "Сигурни ли сте, че искате да изтриете тази група? Това действие е необратимо!");
+        if (!confirmed) return;
+
+        var response = await Http.DeleteAsync($"api/Groups/{groupId}");
+
+        if (response.IsSuccessStatusCode)
+        {
+            await LoadGroups();
+            StateHasChanged();
+        }
+        else
+        {
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                await JS.InvokeVoidAsync("alert", "Нямате права за изтриване на тази група!");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"Не може да изтриете групата, защото в нея има ученици или уроци!");
+            }
+        }
+    }
+
+    public class UserProfile
+    {
+        public string Id { get; set; } = "";
+        public string Role { get; set; } = "";
+        public string City { get; set; } = "Пловдив";
+    }
+
+    public class GroupDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string TeacherId { get; set; } = "";
+        public string City { get; set; } = "Пловдив";
+        public DateTime? StartDate { get; set; }
+    }
+
+    public class TeacherDto { public string Id { get; set; } = ""; public string FullName { get; set; } = ""; }
+}

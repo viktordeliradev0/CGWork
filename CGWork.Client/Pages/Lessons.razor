@@ -1,0 +1,331 @@
+﻿@page "/lessons"
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+
+<div class="container mt-4">
+    <h2 class="mb-4"><i class="bi bi-journal-check text-orange"></i> Уроци и Присъствия</h2>
+
+
+    @if (lessons == null || groups == null || allStudents == null)
+    {
+        <div class="alert alert-info shadow-sm">Зареждане на данните...</div>
+    }
+    else
+    {
+        <!-- Таблица с проведените уроци -->
+        <div class="card shadow mb-5 border-0">
+            <div class="card-body p-0 overflow-auto">
+                <table class="table table-hover align-middle mb-0 text-center">
+                    <thead class="table-orange-header">
+                        <tr>
+                            <th>Дата</th>
+                            <th class="text-start">Тема на урока</th>
+                            <th>Вид урок</th>
+                            <th>Група</th>
+                            <th>Водещ учител</th>
+                            <th>Присъствали деца</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var lesson in lessons.OrderByDescending(l => l.Date))
+                        {
+                            <tr>
+                                <td>@lesson.Date.ToString("dd.MM.yyyy")</td>
+                                <td class="text-start"><strong>@lesson.Topic</strong></td>
+                                <td>
+                                    @if (lesson.LessonType == "Отучващ")
+                                    {
+                                        <span class="badge border border-warning text-dark bg-warning-subtle px-2 py-1">
+                                            <i class="bi bi-arrow-clockwise text-warning-emphasis me-1"></i>
+                                            <strong style="color: #d97706;">Отучващ</strong>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge border px-2 py-1" style="background-color: #fff3eb; border-color: #ffd1b3 !important;">
+                                            <i class="bi bi-book me-1" style="color: #ff6b00;"></i>
+                                            <strong style="color: #ff6b00;">Редовен</strong>
+                                        </span>
+                                    }
+                                </td>
+                                <td>@(groups.FirstOrDefault(g => g.Id == lesson.GroupId)?.Name ?? "Неизвестна")</td>
+                                <td>@(teachers?.FirstOrDefault(t => t.Id == lesson.TeacherId)?.FullName ?? "Неизвестен")</td>
+                                <td>
+                                    <span class="badge bg-success rounded-pill fs-6 px-3">
+                                        @lesson.PresentStudents.Count
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                        @if (!lessons.Any())
+                        {
+                            <tr>
+                                <td colspan="6" class="text-muted p-4">Няма намерени проведени уроци.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Форма за нов урок и присъствия -->
+        <div class="card shadow border-info">
+            <div class="card-header bg-info text-dark fw-bold">
+                <h5 class="mb-0"><i class="bi bi-plus-circle-fill me-2"></i>Запиши нов урок и маркирай присъствия</h5>
+            </div>
+
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="fw-bold">Дата</label>
+                        <input type="date" @bind="newLesson.Date" class="form-control" />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="fw-bold">Тема на урока</label>
+                        <input @bind="newLesson.Topic" class="form-control" placeholder="Напр. Цикли и масиви" />
+                    </div>
+
+                    <!-- ВИД НА УРОКА -->
+                    <div class="col-md-4">
+                        <label class="fw-bold">Вид на урока</label>
+                        <select @bind="newLesson.LessonType" class="form-select">
+                            <option value="Редовен">Редовен урок</option>
+                            <option value="Отучващ">Отучващ урок</option>
+                        </select>
+                    </div>
+
+                    <!-- ВОДЕЩ УЧИТЕЛ -->
+                    <div class="col-md-4">
+                        <label class="fw-bold">Водещ учител</label>
+                        <select @bind="newLesson.TeacherId" class="form-select" disabled="@(!isManager)">
+                            <option value="">-- Избери учител --</option>
+                            @if (teachers != null)
+                            {
+                                @foreach (var teacher in teachers)
+                                {
+                                    <option value="@teacher.Id">@teacher.FullName</option>
+                                }
+                            }
+                        </select>
+                        @if (!isManager)
+                        {
+                            <small class="text-muted d-block mt-1">Автоматично се записва на Вашето име.</small>
+                        }
+                    </div>
+
+                    <!-- ИЗБОР НА ГРУПА (ВСИЧКИ ГРУПИ СА ДОСТЪПНИ) -->
+                    <div class="col-md-4">
+                        <label class="fw-bold">Избери Група</label>
+                        <select value="@newLesson.GroupId" @onchange="OnGroupSelected" class="form-select">
+                            <option value="0">-- Избери група --</option>
+                            @foreach (var g in availableGroups)
+                            {
+                                <option value="@g.Id">@g.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                @* Показваме децата САМО ако е избрана валидна група *@
+                @if (newLesson.GroupId > 0)
+                {
+                    <div class="mt-4 p-3 bg-light rounded border">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="fw-bold mb-0">Отбележи присъстващите деца:</h6>
+
+                            <div>
+                                <button type="button" class="btn btn-sm btn-success me-2 fw-bold" @onclick="MarkAllPresent">
+                                    <i class="bi bi-check-all"></i> Всички присъстват
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClearAll">
+                                    Изчисти
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            @foreach (var student in allStudents.Where(s => s.GroupId == newLesson.GroupId))
+                            {
+                                <div class="col-md-3 mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="student_@student.Id"
+                                               checked="@presentStudentIds.Contains(student.Id)"
+                                               @onchange="@(e => ToggleAttendance(student.Id, e.Value))">
+                                        <label class="form-check-label" for="student_@student.Id">
+                                            @student.FullName
+                                        </label>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="mt-3 text-end">
+                        <button @onclick="SaveLessonAndAttendance" class="btn btn-lg btn-orange px-5 fw-bold shadow-sm">
+                            <i class="bi bi-save me-1"></i> Запази урока и присъствията
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<LessonSessionDto>? lessons;
+    private List<GroupDto>? groups;
+    private List<GroupDto> availableGroups = new();
+    private List<TeacherDto>? teachers;
+    private List<StudentDto>? allStudents;
+
+    private LessonSessionDto newLesson = new LessonSessionDto { Date = DateTime.Today, LessonType = "Редовен" };
+    private List<int> presentStudentIds = new List<int>();
+
+    private bool isManager = false;
+    private string currentUserId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        var token = await LocalStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrEmpty(token))
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        try
+        {
+            var myProfile = await Http.GetFromJsonAsync<UserProfile>("api/Auth/me");
+            if (myProfile != null)
+            {
+                isManager = (myProfile.Role == "Мениджър");
+                currentUserId = myProfile.Id ?? "";
+            }
+
+            lessons = await Http.GetFromJsonAsync<List<LessonSessionDto>>("api/LessonSessions");
+            groups = await Http.GetFromJsonAsync<List<GroupDto>>("api/Groups");
+            allStudents = await Http.GetFromJsonAsync<List<StudentDto>>("api/Students");
+            teachers = await Http.GetFromJsonAsync<List<TeacherDto>>("api/Auth/teachers");
+
+            // ПРОМЯНАТА: Зареждаме абсолютно всички групи за всеки учител
+            if (groups != null)
+            {
+                availableGroups = groups;
+            }
+
+            if (!isManager)
+            {
+                newLesson.TeacherId = currentUserId;
+            }
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+    }
+
+    private void OnGroupSelected(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int groupId))
+        {
+            newLesson.GroupId = groupId;
+            presentStudentIds.Clear();
+        }
+    }
+
+    private void ToggleAttendance(int studentId, object? isChecked)
+    {
+        bool checkStatus = (bool)(isChecked ?? false);
+        if (checkStatus && !presentStudentIds.Contains(studentId))
+        {
+            presentStudentIds.Add(studentId);
+        }
+        else if (!checkStatus && presentStudentIds.Contains(studentId))
+        {
+            presentStudentIds.Remove(studentId);
+        }
+    }
+
+    private void MarkAllPresent()
+    {
+        if (allStudents != null && newLesson.GroupId > 0)
+        {
+            var groupStudents = allStudents.Where(s => s.GroupId == newLesson.GroupId);
+            foreach (var student in groupStudents)
+            {
+                if (!presentStudentIds.Contains(student.Id))
+                {
+                    presentStudentIds.Add(student.Id);
+                }
+            }
+        }
+    }
+
+    private void ClearAll()
+    {
+        presentStudentIds.Clear();
+    }
+
+    private async Task SaveLessonAndAttendance()
+    {
+        if (newLesson.GroupId == 0 || string.IsNullOrWhiteSpace(newLesson.Topic)) return;
+
+        if (!isManager)
+        {
+            newLesson.TeacherId = currentUserId;
+        }
+
+        var response = await Http.PostAsJsonAsync("api/LessonSessions", newLesson);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var createdLesson = await response.Content.ReadFromJsonAsync<LessonSessionDto>();
+
+            if (presentStudentIds.Any() && createdLesson != null)
+            {
+                await Http.PostAsJsonAsync($"api/LessonSessions/{createdLesson.Id}/attendance", presentStudentIds);
+            }
+
+            newLesson = new LessonSessionDto
+            {
+                Date = DateTime.Today,
+                LessonType = "Редовен",
+                TeacherId = isManager ? "" : currentUserId
+            };
+            presentStudentIds.Clear();
+            await LoadData();
+        }
+    }
+
+    public class UserProfile { public string Id { get; set; } = ""; public string Role { get; set; } = ""; }
+
+    public class LessonSessionDto
+    {
+        public int Id { get; set; }
+        public DateTime Date { get; set; }
+        public string Topic { get; set; } = "";
+        public string LessonType { get; set; } = "Редовен";
+        public int GroupId { get; set; }
+        public string TeacherId { get; set; } = "";
+        public List<StudentDto> PresentStudents { get; set; } = new();
+    }
+
+    public class GroupDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string TeacherId { get; set; } = "";
+    }
+
+    public class StudentDto { public int Id { get; set; } public string FullName { get; set; } = ""; public int GroupId { get; set; } }
+    public class TeacherDto { public string Id { get; set; } = ""; public string FullName { get; set; } = ""; }
+}

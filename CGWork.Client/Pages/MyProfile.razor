@@ -1,0 +1,191 @@
+﻿@page "/my-profile"
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-7">
+            <div class="card shadow border-0">
+                <div class="card-header bg-orange text-white d-flex justify-content-between align-items-center py-3">
+                    <h4 class="mb-0"><i class="bi bi-person-badge-fill me-2"></i> Моят Профил</h4>
+                    @if (!isEditing && userProfile != null)
+                    {
+                        <button class="btn btn-sm btn-light text-dark fw-bold shadow-sm" @onclick="EnableEdit">
+                            <i class="bi bi-pencil-square me-1"></i> Редактирай
+                        </button>
+                    }
+                </div>
+                <div class="card-body p-4">
+                    @if (isLoading)
+                    {
+                        <div class="alert alert-info">Зареждане на профила...</div>
+                    }
+                    else if (userProfile != null)
+                    {
+                        <div class="mb-3 text-center">
+                            <span class="badge bg-secondary fs-6 px-3 py-2">
+                                Роля: <strong>@userProfile.Role</strong>
+                            </span>
+                        </div>
+
+                        <!-- ИМЕ -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Име и Фамилия</label>
+                            <input type="text" class="form-control" @bind="userProfile.FullName" disabled="@(!isEditing)" />
+                        </div>
+
+                        <!-- ИМЕЙЛ (Винаги е заключен) -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Имейл адрес</label>
+                            <input type="text" class="form-control" value="@userProfile.Email" disabled />
+                            <small class="text-muted">Имейлът се използва за вход и не може да се променя от тук.</small>
+                        </div>
+
+                        <!-- ТЕЛЕФОНЕН НОМЕР -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Телефонен номер</label>
+                            <input type="text" class="form-control" @bind="userProfile.PhoneNumber" disabled="@(!isEditing)" placeholder="0888123456" />
+                        </div>
+
+                        <!-- ГРАД (Заключен за Учители, достъпен САМО за Мениджъри при редакция) -->
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Град / Клон на академията</label>
+                            <select class="form-select" @bind="userProfile.City" disabled="@(!isEditing || !isManager)">
+                                @if (isManager)
+                                {
+                                    <option value="Всички">Всички градове (Глобален преглед)</option>
+                                }
+                                <option value="София">София</option>
+                                <option value="Пловдив">Пловдив</option>
+                                <option value="Варна">Варна</option>
+                                <option value="Бургас">Бургас</option>
+                                <option value="Русе">Русе</option>
+                                <option value="Стара Загора">Стара Загора</option>
+                            </select>
+
+                            @if (!isManager)
+                            {
+                                <small class="text-muted d-block mt-1">
+                                    <i class="bi bi-lock-fill me-1 text-danger"></i>Градът се определя от администратор и не може да се променя лично.
+                                </small>
+                            }
+                            else
+                            {
+                                <small class="text-muted d-block mt-1">Този град филтрира групите и уроците по подразбиране.</small>
+                            }
+                        </div>
+
+                        <!-- БУТОНИ ПРИ РЕДАКЦИЯ -->
+                        @if (isEditing)
+                        {
+                            <div class="d-flex justify-content-end gap-2 mt-4">
+                                <button class="btn btn-outline-secondary px-4" @onclick="CancelEdit">
+                                    Отказ
+                                </button>
+                                <button class="btn btn-orange px-4 fw-bold shadow-sm" @onclick="SaveProfile">
+                                    <i class="bi bi-save me-1"></i> Запази промените
+                                </button>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool isLoading = true;
+    private bool isEditing = false;
+    private bool isManager = false;
+
+    private UserProfileDto? userProfile;
+    private UserProfileDto? originalProfile;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await LocalStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrEmpty(token))
+        {
+            NavigationManager.NavigateTo("/login");
+            return;
+        }
+
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        try
+        {
+            userProfile = await Http.GetFromJsonAsync<UserProfileDto>("api/Auth/me");
+            if (userProfile != null)
+            {
+                // Проверяваме и за "Мениджър" (BG) и за "Manager" (EN)
+                isManager = userProfile.Role.Equals("Мениджър", StringComparison.OrdinalIgnoreCase)
+                         || userProfile.Role.Equals("Manager", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+
+        isLoading = false;
+    }
+
+    private void EnableEdit()
+    {
+        if (userProfile == null) return;
+
+        originalProfile = new UserProfileDto
+        {
+            Id = userProfile.Id,
+            FullName = userProfile.FullName,
+            Email = userProfile.Email,
+            PhoneNumber = userProfile.PhoneNumber,
+            Role = userProfile.Role,
+            City = userProfile.City
+        };
+
+        isEditing = true;
+    }
+
+    private void CancelEdit()
+    {
+        if (originalProfile != null && userProfile != null)
+        {
+            userProfile.FullName = originalProfile.FullName;
+            userProfile.PhoneNumber = originalProfile.PhoneNumber;
+            userProfile.City = originalProfile.City;
+        }
+
+        isEditing = false;
+    }
+
+    private async Task SaveProfile()
+    {
+        if (userProfile == null) return;
+
+        var response = await Http.PutAsJsonAsync("api/Auth/update-profile", userProfile);
+        if (response.IsSuccessStatusCode)
+        {
+            isEditing = false;
+            await JS.InvokeVoidAsync("alert", "Профилът е обновен успешно!");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Възникна грешка при запазване на профила.");
+        }
+    }
+
+    public class UserProfileDto
+    {
+        public string Id { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string PhoneNumber { get; set; } = "";
+        public string Role { get; set; } = "";
+        public string City { get; set; } = "София";
+    }
+}

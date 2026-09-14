@@ -1,0 +1,225 @@
+﻿@page "/"
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+
+<div class="container-fluid px-0">
+
+    <!-- Банер -->
+    <div class="card shadow-sm border-0 mb-4 text-white p-4" style="background: linear-gradient(135deg, #ff6b00 0%, #ff8800 100%); border-radius: 16px;">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="fw-bold mb-1">Добре дошли в CGWork! 👋</h2>
+                <p class="mb-0 opacity-90">Централно табло за управление на групи, ученици, учители и дневници.</p>
+            </div>
+            <div class="d-none d-md-block">
+                <i class="bi bi-rocket-takeoff display-3 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="alert alert-light shadow-sm text-center p-5 rounded-4">
+            <div class="spinner-border text-orange mb-3" role="status" style="width: 2.5rem; height: 2.5rem;"></div>
+            <div class="text-muted fw-bold">Зареждане на информация...</div>
+        </div>
+    }
+    else
+    {
+        <!-- БЪРЗА СТАТИСТИКА -->
+        <div class="row g-4 mb-5">
+            <div class="col-md-4">
+                <div class="card card-orange-top shadow-sm p-3 bg-white h-100">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted text-uppercase fw-bold mb-1 fs-7">Всички Групи</h6>
+                            <h2 class="fw-bold text-orange mb-0">@groupCount</h2>
+                        </div>
+                        <div class="rounded-circle p-3 bg-light text-orange">
+                            <i class="bi bi-collection-fill fs-3"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-orange-top shadow-sm p-3 bg-white h-100">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted text-uppercase fw-bold mb-1 fs-7">Общо Ученици</h6>
+                            <h2 class="fw-bold text-orange mb-0">@studentCount</h2>
+                        </div>
+                        <div class="rounded-circle p-3 bg-light text-orange">
+                            <i class="bi bi-people-fill fs-3"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card card-orange-top shadow-sm p-3 bg-white h-100">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="text-muted text-uppercase fw-bold mb-1 fs-7">Проведени Уроци</h6>
+                            <h2 class="fw-bold text-orange mb-0">@lessonCount</h2>
+                        </div>
+                        <div class="rounded-circle p-3 bg-light text-orange">
+                            <i class="bi bi-journal-check fs-3"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ОСНОВНИ МОДУЛИ ЗА ДОСТЪП -->
+        <h4 class="fw-bold mb-3 text-dark"><i class="bi bi-grid-fill text-orange me-2"></i>Основно меню</h4>
+
+        <div class="row g-4 mb-5">
+            <!-- 1. ГРУПИ -->
+            <div class="col-md-4">
+                <a href="/groups" class="text-decoration-none">
+                    <div class="card shadow-sm h-100 border-0 card-hover-effect">
+                        <div class="card-body p-4">
+                            <div class="text-orange mb-3">
+                                <i class="bi bi-collection-fill fs-1"></i>
+                            </div>
+                            <h5 class="fw-bold text-dark mb-2">Управление на Групи</h5>
+                            <p class="text-muted small mb-0">Преглед на дневниците, графиците и провежданите часове.</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <!-- 2. УЧЕНИЦИ -->
+            <div class="col-md-4">
+                <a href="/students" class="text-decoration-none">
+                    <div class="card shadow-sm h-100 border-0 card-hover-effect">
+                        <div class="card-body p-4">
+                            <div class="text-orange mb-3">
+                                <i class="bi bi-person-badge-fill fs-1"></i>
+                            </div>
+                            <h5 class="fw-bold text-dark mb-2">Ученици</h5>
+                            <p class="text-muted small mb-0">Списък с записаните деца, техни профили, класове и присъствия.</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <!-- 3. УРОЦИ И ПРИСЪСТВИЯ -->
+            <div class="col-md-4">
+                <a href="/lessons" class="text-decoration-none">
+                    <div class="card shadow-sm h-100 border-0 card-hover-effect">
+                        <div class="card-body p-4">
+                            <div class="text-orange mb-3">
+                                <i class="bi bi-journal-check fs-1"></i>
+                            </div>
+                            <h5 class="fw-bold text-dark mb-2">Уроци и Присъствия</h5>
+                            <p class="text-muted small mb-0">Бързо записаване на нов урок и отбелязване на присъствалите деца.</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <!-- 4. УЧИТЕЛИ -->
+            <div class="col-md-4">
+                <a href="/teachers" class="text-decoration-none">
+                    <div class="card shadow-sm h-100 border-0 card-hover-effect">
+                        <div class="card-body p-4">
+                            <div class="text-orange mb-3">
+                                <i class="bi bi-people-fill fs-1"></i>
+                            </div>
+                            <h5 class="fw-bold text-dark mb-2">Преподаватели</h5>
+                            <p class="text-muted small mb-0">Списък на всички учители в школата и зачислените им групи.</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <!-- 5. ДОБАВИ УЧИТЕЛ (Само за Мениджъри) -->
+            @if (isManager)
+            {
+                <div class="col-md-4">
+                    <a href="/register" class="text-decoration-none">
+                        <div class="card shadow-sm h-100 border-0 card-hover-effect border-orange-light">
+                            <div class="card-body p-4">
+                                <div class="text-orange mb-3">
+                                    <i class="bi bi-person-plus-fill fs-1"></i>
+                                </div>
+                                <h5 class="fw-bold text-orange mb-2">Добави нов Учител</h5>
+                                <p class="text-muted small mb-0">Регистриране на нов акаунт за преподавател в системата.</p>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            }
+
+            <!-- 6. МОЯТ ПРОФИЛ -->
+            <div class="col-md-4">
+                <a href="/my-profile" class="text-decoration-none">
+                    <div class="card shadow-sm h-100 border-0 card-hover-effect">
+                        <div class="card-body p-4">
+                            <div class="text-orange mb-3">
+                                <i class="bi bi-person-vcard-fill fs-1"></i>
+                            </div>
+                            <h5 class="fw-bold text-dark mb-2">Моят Профил</h5>
+                            <p class="text-muted small mb-0">Преглед на вашите данни, роля в системата и сигурност.</p>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    }
+
+</div>
+
+@code {
+    private bool isLoading = true;
+    private bool isManager = false;
+    private int groupCount = 0;
+    private int studentCount = 0;
+    private int lessonCount = 0;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var token = await LocalStorage.GetItemAsync<string>("authToken");
+                if (string.IsNullOrEmpty(token))
+                {
+                    NavigationManager.NavigateTo("/login");
+                    return;
+                }
+
+                Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+                // Проверка за роля
+                var myProfile = await Http.GetFromJsonAsync<UserProfile>("api/Auth/me");
+                if (myProfile != null)
+                {
+                    isManager = (myProfile.Role == "Мениджър");
+                }
+
+                // Взимане на данни
+                var groups = await Http.GetFromJsonAsync<List<object>>("api/Groups");
+                if (groups != null) groupCount = groups.Count;
+
+                var students = await Http.GetFromJsonAsync<List<object>>("api/Students");
+                if (students != null) studentCount = students.Count;
+
+                var lessons = await Http.GetFromJsonAsync<List<object>>("api/LessonSessions");
+                if (lessons != null) lessonCount = lessons.Count;
+            }
+            catch
+            {
+                // При грешка с токена
+            }
+
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    public class UserProfile { public string Role { get; set; } = ""; }
+}

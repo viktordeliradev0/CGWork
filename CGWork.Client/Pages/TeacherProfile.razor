@@ -1,0 +1,142 @@
+﻿@page "/teacher/{TeacherId}"
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject ILocalStorageService LocalStorage
+@inject NavigationManager NavigationManager
+
+<div class="container mt-4">
+    @if (isLoading)
+    {
+        <div class="alert alert-info">Зареждане на профила...</div>
+    }
+    else if (teacher == null)
+    {
+        <div class="alert alert-danger">Учителят не е намерен!</div>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+            <div>
+                <h2 class="mb-1">Профил: <span class="text-primary">@teacher.FullName</span></h2>
+                <div class="text-secondary fs-6 mt-2">
+                    <span class="me-4">
+                        <i class="bi bi-envelope-at-fill text-warning"></i>
+                        @(string.IsNullOrEmpty(teacher.Email) ? "Няма въведен имейл" : teacher.Email)
+                    </span>
+                    <span>
+                        <i class="bi bi-telephone-fill text-success"></i>
+                        @(string.IsNullOrEmpty(teacher.PhoneNumber) ? "Няма въведен телефон" : teacher.PhoneNumber)
+                    </span>
+                </div>
+            </div>
+            <a href="/teachers" class="btn btn-outline-secondary shadow-sm">Назад към всички учители</a>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <div class="card shadow border-success h-100">
+                    <div class="card-header bg-success text-white fw-bold">
+                        <i class="bi bi-collection"></i> Водени групи (@teacherGroups.Count)
+                    </div>
+                    <ul class="list-group list-group-flush">
+                        @if (teacherGroups.Any())
+                        {
+                            @foreach (var group in teacherGroups)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span><strong>@group.Name</strong> <br><small class="text-muted">@group.City</small></span>
+                                    <a href="/group/@group.Id" class="btn btn-sm btn-outline-success">Дневник</a>
+                                </li>
+                            }
+                        }
+                        else
+                        {
+                            <li class="list-group-item text-muted">Няма назначени групи.</li>
+                        }
+                    </ul>
+                </div>
+            </div>
+
+            <div class="col-md-6 mb-4">
+                <div class="card shadow border-info h-100">
+                    <div class="card-header bg-info text-dark fw-bold">
+                        <i class="bi bi-journal-check"></i> Последни проведени уроци
+                    </div>
+                    <ul class="list-group list-group-flush overflow-auto" style="max-height: 400px;">
+                        @if (teacherLessons.Any())
+                        {
+                            @foreach (var lesson in teacherLessons.OrderByDescending(l => l.Date))
+                            {
+                                <li class="list-group-item">
+                                    <div class="fw-bold">@lesson.Topic</div>
+                                    <div class="d-flex justify-content-between">
+                                        <small class="text-muted">@lesson.Date.ToShortDateString()</small>
+                                        <span class="badge bg-secondary">
+                                            @(teacherGroups.FirstOrDefault(g => g.Id == lesson.GroupId)?.Name ?? "Неизвестна група")
+                                        </span>
+                                    </div>
+                                </li>
+                            }
+                        }
+                        else
+                        {
+                            <li class="list-group-item text-muted">Няма записани уроци.</li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string TeacherId { get; set; } = "";
+
+    private bool isLoading = true;
+    private TeacherDto? teacher;
+    private List<GroupDto> teacherGroups = new();
+    private List<LessonSessionDto> teacherLessons = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await LocalStorage.GetItemAsync<string>("authToken");
+        if (string.IsNullOrEmpty(token)) { NavigationManager.NavigateTo("/login"); return; }
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        try
+        {
+            var myProfile = await Http.GetFromJsonAsync<UserProfile>("api/Auth/me");
+            if (myProfile?.Role != "Мениджър") { NavigationManager.NavigateTo("/"); return; }
+
+            // Намираме конкретния учител
+            var allTeachers = await Http.GetFromJsonAsync<List<TeacherDto>>("api/Auth/teachers");
+            teacher = allTeachers?.FirstOrDefault(t => t.Id == TeacherId);
+
+            // Намираме само неговите групи
+            var allGroups = await Http.GetFromJsonAsync<List<GroupDto>>($"api/Groups?guid={Guid.NewGuid()}");
+            if (allGroups != null) teacherGroups = allGroups.Where(g => g.TeacherId == TeacherId).ToList();
+
+            // Намираме само неговите уроци
+            var allLessons = await Http.GetFromJsonAsync<List<LessonSessionDto>>($"api/LessonSessions?guid={Guid.NewGuid()}");
+            if (allLessons != null) teacherLessons = allLessons.Where(l => l.TeacherId == TeacherId).ToList();
+        }
+        catch { }
+
+        isLoading = false;
+    }
+
+    public class UserProfile { public string Role { get; set; } = ""; }
+
+    // ОБНОВЕН КЛАС: Добавени са Email и PhoneNumber
+    public class TeacherDto
+    {
+        public string Id { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string PhoneNumber { get; set; } = "";
+    }
+
+    public class GroupDto { public int Id { get; set; } public string Name { get; set; } = ""; public string City { get; set; } = ""; public string TeacherId { get; set; } = ""; }
+    public class LessonSessionDto { public int Id { get; set; } public DateTime Date { get; set; } public string Topic { get; set; } = ""; public int GroupId { get; set; } public string TeacherId { get; set; } = ""; }
+}
