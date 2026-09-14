@@ -1,0 +1,25 @@
+## Visual Studio / C# / .NET Ignore Rules
+
+# Компилиран код и временни папки
+bin/
+obj/
+out/
+release/
+
+# Временни и системни файлове на Visual Studio
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+
+# Локални настройки на средата
+appsettings.Development.json
+appsettings.Local.json
+
+# Локални бази данни
+*.db
+*.sqlite
+
+# Пакетни мениджъри
+packages/
+*.nupkg
