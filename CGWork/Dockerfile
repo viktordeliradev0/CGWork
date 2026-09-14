@@ -1,12 +1,13 @@
 ﻿FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Копираме .csproj файла и възстановяваме пакетите
-COPY ["CGWork.csproj", "./"]
-RUN dotnet restore "CGWork.csproj"
+# Копираме проекта от подпапката CGWork (коригирай CGWork, ако папката се казва различно)
+COPY ["CGWork/CGWork.csproj", "CGWork/"]
+RUN dotnet restore "CGWork/CGWork.csproj"
 
-# Копираме целия проект и го компилираме
+# Копираме всички останали файлове
 COPY . .
+WORKDIR "/src/CGWork"
 RUN dotnet build "CGWork.csproj" -c Release -o /app/build
 RUN dotnet publish "CGWork.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
