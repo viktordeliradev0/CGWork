@@ -14,7 +14,7 @@ internal class Program
         // Клиентът комуникира с бекенд API-то през HttpClient
         builder.Services.AddScoped(sp => new HttpClient
         {
-            BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
+            BaseAddress = new Uri("https://cgwork-api.onrender.com/")
         });
 
         builder.Services.AddBlazoredLocalStorage();
