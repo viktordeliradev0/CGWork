@@ -188,7 +188,7 @@
                 var token = await LocalStorage.GetItemAsync<string>("authToken");
                 if (string.IsNullOrEmpty(token))
                 {
-                    NavigationManager.NavigateTo("/login");
+                    NavigationManager.NavigateTo("login");
                     return;
                 }
 
