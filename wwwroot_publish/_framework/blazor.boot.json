@@ -1,7 +1,7 @@
 {
   "mainAssemblyName": "CGWork.Client",
   "resources": {
-    "hash": "sha256-DXB0m9Mnstjkr9MeeplqGVm6qJ23e62+MTgI8Yyzf2I=",
+    "hash": "sha256-+zE21lk7L9qHSW2G1TyQPdf+h/nzN3I4BYSUTWxIgdU=",
     "jsModuleNative": {
       "dotnet.native.js": "sha256-dexsp+9ih2C28zVhNnPXUbkz2QCq7lHpkyDcmaLl7NQ="
     },
@@ -23,7 +23,7 @@
       "Microsoft.AspNetCore.Components.wasm": "sha256-/yqMcQ1DueKPLcOGHZy8vRSVJDCl0aMDLoRlr7F/YWA=",
       "Microsoft.AspNetCore.Components.Forms.wasm": "sha256-HRmo0+51+InfsLVGd1GSIMDsnq/uJeyZLjhMcejQj9g=",
       "Microsoft.AspNetCore.Components.Web.wasm": "sha256-ggfqrS4Fal1y4h+G6WWTIZlr+3JJXUilY+PIEmnHQrk=",
-      "Microsoft.AspNetCore.Components.WebAssembly.wasm": "sha256-/NV+9sFJ1msvPoC9YaMK5FUapZYheputXYfozvm/xxo=",
+      "Microsoft.AspNetCore.Components.WebAssembly.wasm": "sha256-MybB/zQeYp3X81KxOS3aalKHoAtkUq4ufhh+x39jVHo=",
       "Microsoft.EntityFrameworkCore.wasm": "sha256-10cKLBuiV2H4bX5MOgD5gsjnyr9gi+WOr7/Ku2NhxuY=",
       "Microsoft.EntityFrameworkCore.Abstractions.wasm": "sha256-adMtDxPcUtkgAj7mSEikWkyxtU60Zk4NjPOj0p0iJJA=",
       "Microsoft.EntityFrameworkCore.Relational.wasm": "sha256-vTXK/HqM/Q1Ygnj5oRvmvHSlbG1ckMty2dlAe8uvb6g=",
@@ -89,7 +89,7 @@
       "System.wasm": "sha256-0h/E837RjMJjMLndiTv3gCaXstmfreX9Ui/wJVYpzwg=",
       "netstandard.wasm": "sha256-tNNM0ZaUGXRQACFZGJtmYGFYW2u1ZbJDs24f26OzaP4=",
       "System.Private.CoreLib.wasm": "sha256-cObE01ZYwmZAZ6vTAJ+kbRa6qFRgPCciVHMxs4TdKrA=",
-      "CGWork.Client.wasm": "sha256-OltslBwalKSSw/maZ0AQJpb3Ziie/2J9y9uFsekA8Ps="
+      "CGWork.Client.wasm": "sha256-pCTENFFe4ubXxgh7A+dPx0VMzzprDBBT4xJDeAI77cw="
     }
   },
   "cacheBootResources": true,
